@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 BASE_URL = "https://developer.nrel.gov/api/nsrdb/v2/solar/nsrdb-GOES-aggregated-v4-0-0-download"
 YEARS = list(range(1998, 2025))
@@ -35,7 +36,7 @@ def build_query(args: argparse.Namespace, year: int) -> str:
     return f"{BASE_URL}.json?{urlencode(params)}"
 
 
-def run_curl(url: str) -> dict:
+def run_curl_text(url: str) -> str:
     proc = subprocess.run(
         ["curl", "-sS", "--fail", url],
         check=False,
@@ -44,7 +45,19 @@ def run_curl(url: str) -> dict:
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "curl failed")
-    return json.loads(proc.stdout)
+    return proc.stdout
+
+
+def download_file(url: str, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["curl", "-L", "-sS", "--fail", "-o", str(output_path), url],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "curl download failed")
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +74,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--leap-day", action="store_true")
     p.add_argument("--manifest", default="data/nsrdb_us_1998_2024_manifest.csv")
     p.add_argument("--submit", action="store_true", help="Submit API requests via curl")
+    p.add_argument("--download", action="store_true", help="Download files when API returns a download URL")
+    p.add_argument("--raw-dir", default="data/raw", help="Directory to store downloaded raw files")
     p.add_argument(
         "--format",
         choices=("json", "csv"),
@@ -88,10 +103,27 @@ def main() -> int:
 
         if args.submit:
             try:
-                payload = run_curl(url)
+                body = run_curl_text(url)
+                payload = json.loads(body)
                 row["status"] = "submitted"
                 row["download_url"] = payload.get("outputs", {}).get("downloadUrl", "")
                 row["message"] = payload.get("errors", "") or payload.get("warnings", "") or "ok"
+
+                if args.download and row["download_url"]:
+                    parsed = urlparse(row["download_url"])
+                    filename = os.path.basename(parsed.path) or f"{year}.{args.format}"
+                    output_path = Path(args.raw_dir) / str(year) / filename
+                    download_file(row["download_url"], output_path)
+                    row["status"] = "downloaded"
+                    row["message"] = f"saved:{output_path}"
+            except json.JSONDecodeError:
+                # Direct CSV responses (typically point requests) can be persisted as-is.
+                output_path = Path(args.raw_dir) / str(year) / f"nsrdb_{year}.csv"
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(body, encoding="utf-8")
+                row["status"] = "downloaded"
+                row["message"] = f"saved:{output_path}"
+                row["download_url"] = "inline_response"
             except Exception as exc:  # noqa: BLE001
                 row["status"] = "failed"
                 row["message"] = str(exc)

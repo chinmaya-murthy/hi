@@ -27,10 +27,13 @@ This writes `data/nsrdb_us_1998_2024_manifest.csv` with one request per year.
 ```bash
 python3 scripts/collect_nsrdb_us_data.py \
   --submit \
+  --download \
   --api-key "<YOUR_NREL_API_KEY>" \
   --full-name "<YOUR_NAME>" \
   --email "<YOUR_EMAIL>" \
   --affiliation "<ORG>"
 ```
 
-By default the script targets the USA bounding box via NSRDB GOES Aggregated v4 data and creates one request URL per year (1998-2024).
+By default the script targets the USA bounding box via NSRDB GOES Aggregated v4 data and creates one request URL per year (1998-2024). When `--download` is enabled, returned files are saved under `data/raw/<year>/...`.
+
+> Important: use your own NREL API key (`--api-key`). `DEMO_KEY` commonly fails for large USA-wide requests.
