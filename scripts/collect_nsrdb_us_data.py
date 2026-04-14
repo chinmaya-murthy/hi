@@ -7,12 +7,11 @@ import argparse
 import csv
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 from urllib.parse import urlencode
 
-BASE_URL = "https://developer.nlr.gov/api/nsrdb/v2/solar/nsrdb-GOES-aggregated-v4-0-0-download"
+BASE_URL = "https://developer.nrel.gov/api/nsrdb/v2/solar/nsrdb-GOES-aggregated-v4-0-0-download"
 YEARS = list(range(1998, 2025))
 # Approximate CONUS bounding box in WKT POLYGON (lon lat).
 USA_WKT = "POLYGON((-125 24,-66 24,-66 49,-125 49,-125 24))"
@@ -62,18 +61,29 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--leap-day", action="store_true")
     p.add_argument("--manifest", default="data/nsrdb_us_1998_2024_manifest.csv")
     p.add_argument("--submit", action="store_true", help="Submit API requests via curl")
+    p.add_argument(
+        "--format",
+        choices=("json", "csv"),
+        default="json",
+        help="Use json for async/archive requests, csv for direct point/year download.",
+    )
     p.add_argument("--sleep", type=float, default=1.0)
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.submit and args.api_key == "DEMO_KEY":
+        print(
+            "Warning: DEMO_KEY is often blocked for large NSRDB requests; use your own NREL API key.",
+        )
     manifest_path = Path(args.manifest)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
     rows = []
     for year in YEARS:
         url = build_query(args, year)
+        url = url.replace(".json?", f".{args.format}?")
         row = {"year": year, "request_url": url, "status": "planned", "download_url": "", "message": ""}
 
         if args.submit:
