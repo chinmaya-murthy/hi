@@ -34,5 +34,3 @@ python3 scripts/collect_nsrdb_us_data.py \
 ```
 
 By default the script targets the USA bounding box via NSRDB GOES Aggregated v4 data and creates one request URL per year (1998-2024).
-
-> Important: use your own NREL API key (`--api-key`). `DEMO_KEY` commonly fails for large USA-wide requests.
